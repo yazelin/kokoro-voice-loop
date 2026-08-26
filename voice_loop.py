@@ -184,6 +184,15 @@ def selfcheck():
     print("Kokoro selfcheck OK! (Available voices: %d)" % len(voices))
 
 
+def taiwanize_phonemes(p):
+    # 台灣國語平舌化（去捲舌音）
+    p = p.replace("ʂ", "s")       # ㄕ -> ㄙ (sh -> s)
+    p = p.replace("ʈʂʰ", "tsʰ")   # ㄔ -> ㄘ (ch -> c)
+    p = p.replace("ʈʂ", "ts")     # ㄓ -> ㄗ (zh -> z)
+    p = p.replace("ʐ", "z")       # ㄖ -> 軟化 (r -> z)
+    return p
+
+
 def main():
     ap = argparse.ArgumentParser(description="Kokoro-82M Voice Loop")
     ap.add_argument("--voice", default="jinn", help="預設音色，支援 jinn 或 zf_xiaobei, zf_xiaoni, zm_yunjian")
@@ -363,10 +372,11 @@ def main():
         has_cjk = bool(re.search(r"[\u4e00-\u9fff]", answer))
         try:
             if has_cjk:
-                # 使用 misaki[zh] 產生帶四聲調的中文音素
-                phonemes, _ = g2p(answer)
+                # 使用 misaki[zh] 產生帶四聲調的中文音素，並經過台灣國語去捲舌轉換
+                raw_phonemes, _ = g2p(answer)
+                phonemes = taiwanize_phonemes(raw_phonemes)
                 samples, sr = kokoro.create(phonemes, voice=v_target, speed=state["speed"], is_phonemes=True)
-                lang_tag = "zh (misaki)"
+                lang_tag = "zh (misaki+tw)"
             else:
                 lang_code = "en-gb" if isinstance(state["voice"], str) and state["voice"].startswith("b") else "en-us"
                 if state["custom_style"] is None and isinstance(v_target, str) and v_target.startswith("z"):
