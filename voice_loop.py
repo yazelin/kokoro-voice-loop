@@ -22,6 +22,7 @@ import time
 import urllib.error
 import urllib.request
 from pathlib import Path
+from taiwanize import taiwanize_text, taiwanize_phonemes
 
 HERE = Path(__file__).resolve().parent
 MODEL_PATH = HERE / "models/kokoro-v1.0.onnx"
@@ -347,10 +348,12 @@ def main():
                 continue
 
         turn_start = time.time()
+        turn_start = time.time()
         if typed_say:
             heard = typed_say
             print(f"測試文字：{heard}")
-            answer = heard  # :say 模式直接發音該句子
+            answer_display = taiwanize_text(heard, for_speech=False)
+            speech_text = taiwanize_text(heard, for_speech=True)
             stt_time = 0.0
             llm_time = 0.0
         else:
@@ -365,25 +368,27 @@ def main():
                 print("聽不出內容，請再試一次。\n")
                 continue
             t_llm = time.time()
-            answer = ask_llm(heard, state["backend"], state["model"], state["len"], history)
+            raw_answer = ask_llm(heard, state["backend"], state["model"], state["len"], history)
             llm_time = time.time() - t_llm
-            print(f"回答：{answer}（LLM {llm_time:.2f}s）")
+            answer_display = taiwanize_text(raw_answer, for_speech=False)
+            speech_text = taiwanize_text(raw_answer, for_speech=True)
+            print(f"回答：{answer_display}（LLM {llm_time:.2f}s）")
 
         t_tts = time.time()
         v_target = state["custom_style"] if state["custom_style"] is not None else state["voice"]
-        has_cjk = bool(re.search(r"[\u4e00-\u9fff]", answer))
+        has_cjk = bool(re.search(r"[\u4e00-\u9fff]", speech_text))
         try:
             if has_cjk:
-                # 使用 misaki[zh] 產生帶四聲調的中文音素，並經過台灣國語去捲舌轉換
-                raw_phonemes, _ = g2p(answer)
+                # 使用 misaki[zh] 產生帶四聲調的中文音素，並經過台灣國語去捲舌與雙唇化轉換
+                raw_phonemes, _ = g2p(speech_text)
                 phonemes = taiwanize_phonemes(raw_phonemes)
                 samples, sr = kokoro.create(phonemes, voice=v_target, speed=state["speed"], is_phonemes=True)
-                lang_tag = "zh (misaki+tw)"
+                lang_tag = "zh (taiwanize+misaki)"
             else:
                 lang_code = "en-gb" if isinstance(state["voice"], str) and state["voice"].startswith("b") else "en-us"
                 if state["custom_style"] is None and isinstance(v_target, str) and v_target.startswith("z"):
                     v_target = "af_heart"
-                samples, sr = kokoro.create(answer, voice=v_target, speed=state["speed"], lang=lang_code)
+                samples, sr = kokoro.create(speech_text, voice=v_target, speed=state["speed"], lang=lang_code)
                 lang_tag = lang_code
 
             sf.write(str(out_wav), samples, sr)
@@ -392,7 +397,7 @@ def main():
             print(f"Kokoro 合成（{lang_tag}）：{tts_time:.2f}s | 音訊長：{audio_sec:.1f}s | 總耗時：{time.time()-turn_start:.2f}s")
             subprocess.run(["paplay", str(out_wav)])
             if not typed_say:
-                history.append((heard, answer))
+                history.append((heard, answer_display))
             print()
         except Exception as e:
             print(f"Kokoro 發音失敗: {e}\n")
