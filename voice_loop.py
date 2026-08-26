@@ -61,9 +61,19 @@ COMMANDS = {
 }
 
 
+HALLUCINATIONS = {
+    "謝謝大家收看", "謝謝大家收看。", "請訂閱我的頻道", "請訂閱我的頻道。",
+    "請不吝賜教", "謝謝大家", "謝謝大家。", "未完待續", "感謝您的收看",
+}
+
+
 def clean_stt(text):
     text = PAREN_RE.sub("", text).strip()
-    return "" if text and text in STT_HINT else text
+    if not text or text in STT_HINT or text in HALLUCINATIONS:
+        return ""
+    if re.match(r"^(.{2,12}?)\1{2,}[。！!？\?]*$", text):
+        return ""
+    return text
 
 
 def record(out_wav, device):
@@ -106,7 +116,7 @@ def ensure_whisper_server(timeout=20):
 def transcribe(wav, stt=None):
     if stt and stt.get("url"):
         r = subprocess.run(
-            ["curl", "-s", "--max-time", "60", "-F", f"file=@{wav}", "-F", "language=zh",
+            ["curl", "-s", "--max-time", "10", "-F", f"file=@{wav}", "-F", "language=zh",
              "-F", "response_format=json", "-F", f"prompt={STT_HINT}", stt["url"]],
             capture_output=True, text=True,
         )
@@ -118,7 +128,7 @@ def transcribe(wav, stt=None):
     env = {**os.environ, "LD_LIBRARY_PATH": str(WHISPER_CLI.parent)}
     r = subprocess.run(
         [str(WHISPER_CLI), "-m", str(WHISPER_MODEL), "-l", "zh", "-nt", "-np",
-         "--prompt", STT_HINT, "-f", str(wav)],
+         "-nf", "-sns", "-nth", "0.6", "--prompt", STT_HINT, "-f", str(wav)],
         capture_output=True, text=True, env=env,
     )
     if r.returncode != 0:
