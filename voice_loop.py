@@ -357,14 +357,22 @@ def main():
 
         t_tts = time.time()
         v_target = state["custom_style"] if state["custom_style"] is not None else state["voice"]
-        # 中文使用 cmn 語系代碼
-        lang_code = "cmn"
+        # 自動判斷中英文語系代碼
+        has_cjk = bool(re.search(r"[\u4e00-\u9fff]", answer))
+        if not has_cjk:
+            lang_code = "en-gb" if isinstance(state["voice"], str) and state["voice"].startswith("b") else "en-us"
+            # 若目前為純中文音色但輸入英文，自動切換至高質感英文音色 af_heart 發音
+            if state["custom_style"] is None and isinstance(v_target, str) and v_target.startswith("z"):
+                v_target = "af_heart"
+        else:
+            lang_code = "cmn"
+
         try:
             samples, sr = kokoro.create(answer, voice=v_target, speed=state["speed"], lang=lang_code)
             sf.write(str(out_wav), samples, sr)
             tts_time = time.time() - t_tts
             audio_sec = len(samples) / sr
-            print(f"Kokoro 合成：{tts_time:.2f}s | 音訊長：{audio_sec:.1f}s | 總耗時：{time.time()-turn_start:.2f}s")
+            print(f"Kokoro 合成（語系 {lang_code}）：{tts_time:.2f}s | 音訊長：{audio_sec:.1f}s | 總耗時：{time.time()-turn_start:.2f}s")
             subprocess.run(["paplay", str(out_wav)])
             if not typed_say:
                 history.append((heard, answer))
