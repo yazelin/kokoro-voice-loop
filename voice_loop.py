@@ -240,6 +240,9 @@ def main():
     print(f"後端：{state['backend']} / {state['model']} | 音色：{state['voice']} | 語速：{state['speed']}")
     print("提示：按 Enter 錄音，打字輸入 :say <文字> 直接測試，打 :help 看完整指令。\n")
 
+    from misaki.zh import ZHG2P
+    g2p = ZHG2P()
+
     out_wav = WORK / "out.wav"
     in_wav = WORK / "in.wav"
 
@@ -357,22 +360,24 @@ def main():
 
         t_tts = time.time()
         v_target = state["custom_style"] if state["custom_style"] is not None else state["voice"]
-        # 自動判斷中英文語系代碼
         has_cjk = bool(re.search(r"[\u4e00-\u9fff]", answer))
-        if not has_cjk:
-            lang_code = "en-gb" if isinstance(state["voice"], str) and state["voice"].startswith("b") else "en-us"
-            # 若目前為純中文音色但輸入英文，自動切換至高質感英文音色 af_heart 發音
-            if state["custom_style"] is None and isinstance(v_target, str) and v_target.startswith("z"):
-                v_target = "af_heart"
-        else:
-            lang_code = "cmn"
-
         try:
-            samples, sr = kokoro.create(answer, voice=v_target, speed=state["speed"], lang=lang_code)
+            if has_cjk:
+                # 使用 misaki[zh] 產生帶四聲調的中文音素
+                phonemes, _ = g2p(answer)
+                samples, sr = kokoro.create(phonemes, voice=v_target, speed=state["speed"], is_phonemes=True)
+                lang_tag = "zh (misaki)"
+            else:
+                lang_code = "en-gb" if isinstance(state["voice"], str) and state["voice"].startswith("b") else "en-us"
+                if state["custom_style"] is None and isinstance(v_target, str) and v_target.startswith("z"):
+                    v_target = "af_heart"
+                samples, sr = kokoro.create(answer, voice=v_target, speed=state["speed"], lang=lang_code)
+                lang_tag = lang_code
+
             sf.write(str(out_wav), samples, sr)
             tts_time = time.time() - t_tts
             audio_sec = len(samples) / sr
-            print(f"Kokoro 合成（語系 {lang_code}）：{tts_time:.2f}s | 音訊長：{audio_sec:.1f}s | 總耗時：{time.time()-turn_start:.2f}s")
+            print(f"Kokoro 合成（{lang_tag}）：{tts_time:.2f}s | 音訊長：{audio_sec:.1f}s | 總耗時：{time.time()-turn_start:.2f}s")
             subprocess.run(["paplay", str(out_wav)])
             if not typed_say:
                 history.append((heard, answer))
