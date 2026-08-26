@@ -163,6 +163,15 @@ def ask_llm(question, backend, model, max_chars, history=()):
     return " ".join(raw.split())[:max_chars * 2] or "我不太確定該怎麼回答。"
 
 
+PRESETS = {
+    "jinn": {
+        "desc": "Jinn（調配風格：55% zf_xiaobei + 30% zf_xiaoni + 15% af_bella）",
+        "weights": [("zf_xiaobei", 0.55), ("zf_xiaoni", 0.30), ("af_bella", 0.15)],
+        "speed": 1.05,
+    }
+}
+
+
 def selfcheck():
     assert MODEL_PATH.is_file(), f"找不到模型檔 {MODEL_PATH}"
     assert VOICES_PATH.is_file(), f"找不到音色檔 {VOICES_PATH}"
@@ -177,8 +186,8 @@ def selfcheck():
 
 def main():
     ap = argparse.ArgumentParser(description="Kokoro-82M Voice Loop")
-    ap.add_argument("--voice", default="zf_xiaobei", help="預設音色，如 zf_xiaobei, zf_xiaoni, zm_yunjian")
-    ap.add_argument("--speed", type=float, default=1.0, help="語速 (預設 1.0)")
+    ap.add_argument("--voice", default="jinn", help="預設音色，支援 jinn 或 zf_xiaobei, zf_xiaoni, zm_yunjian")
+    ap.add_argument("--speed", type=float, default=None, help="語速 (預設 jinn=1.05, 一般=1.0)")
     ap.add_argument("--backend", choices=["llmshare", "groq", "local"], default="llmshare")
     ap.add_argument("--model", help="指定 LLM 模型")
     ap.add_argument("--max-chars", type=int, default=50, help="回答最大字數")
@@ -203,11 +212,24 @@ def main():
     zh_voices = [v for v in all_voices if v.startswith("z")]
     print(f"Kokoro 載入完成（{time.time()-t0:.2f}s）！中文音色：{', '.join(zh_voices)}")
 
+    def resolve_voice(vname):
+        if vname in PRESETS:
+            p = PRESETS[vname]
+            style = sum(w * kokoro.get_voice_style(v) for v, w in p["weights"])
+            spd = p["speed"]
+            return vname, style, spd
+        if vname in all_voices:
+            return vname, None, 1.0
+        return "zf_xiaobei", None, 1.0
+
+    v_name, v_style, v_spd = resolve_voice(args.voice)
+    speed = args.speed if args.speed is not None else v_spd
+
     model = args.model or DEFAULT_MODEL[args.backend]
     state = {
-        "voice": args.voice,
-        "custom_style": None,
-        "speed": args.speed,
+        "voice": v_name,
+        "custom_style": v_style,
+        "speed": speed,
         "backend": args.backend,
         "model": model,
         "len": args.max_chars,
@@ -259,9 +281,16 @@ def main():
             _, _, vname = line.partition(" ")
             vname = vname.strip()
             if not vname:
-                print(f"\n全部可用音色：\n中文: {', '.join(zh_voices)}\n全部: {', '.join(all_voices)}\n")
+                presets_str = ", ".join(f"{k} ({v['desc']})" for k, v in PRESETS.items())
+                print(f"\n推薦預設調配音：{presets_str}\n原生中文音色: {', '.join(zh_voices)}\n全部音色: {', '.join(all_voices)}\n")
                 continue
-            if vname in all_voices:
+            if vname in PRESETS:
+                v_name, v_style, v_spd = resolve_voice(vname)
+                state["voice"] = v_name
+                state["custom_style"] = v_style
+                state["speed"] = v_spd
+                print(f"音色已切換為：{v_name}（{PRESETS[vname]['desc']}）\n")
+            elif vname in all_voices:
                 state["voice"] = vname
                 state["custom_style"] = None
                 print(f"音色已切換為：{vname}\n")
