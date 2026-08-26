@@ -185,11 +185,13 @@ def selfcheck():
 
 
 def taiwanize_phonemes(p):
-    # 台灣國語平舌化（去捲舌音）
+    # 1. 台灣國語平舌化（去捲舌音）
     p = p.replace("ʂ", "s")       # ㄕ -> ㄙ (sh -> s)
     p = p.replace("ʈʂʰ", "tsʰ")   # ㄔ -> ㄘ (ch -> c)
     p = p.replace("ʈʂ", "ts")     # ㄓ -> ㄗ (zh -> z)
     p = p.replace("ʐ", "z")       # ㄖ -> 軟化 (r -> z)
+    # 2. 雙唇圓唇介音化（去除北方齒唇音 v / vei，轉為純雙唇 ㄨ [u] / uei, uən）
+    p = p.replace("w", "u")       # 微/問/我 -> ㄨㄟ, ㄨㄣ, ㄨㄛ
     return p
 
 
