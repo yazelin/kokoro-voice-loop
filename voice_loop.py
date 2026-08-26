@@ -51,7 +51,8 @@ COMMANDS = {
     ":voice": "切換音色，例：:voice zf_xiaobei（直接輸入 :voice 看可用清單）",
     ":blend": "混合兩種音色，例：:blend zf_xiaobei zf_xiaoni 0.7",
     ":speed": "調整語速 (0.5~2.0)，例：:speed 1.1",
-    ":say": "不錄音，直接發音或測試，例：:say 今天天氣真好",
+    ":say": "不錄音，直接打字問 LLM，例：:say 今天天氣如何",
+    ":tts": "純文字發音測試（不問 LLM、不進記憶），例：:tts 測試一段話",
     ":backend": "換 LLM 後端：:backend llmshare / groq / local",
     ":len": "回答字數上限，例：:len 40",
     ":clear": "清空對話歷史",
@@ -350,33 +351,45 @@ def main():
             continue
 
         typed_say = ""
+        direct_tts = ""
         if line.startswith(":say"):
             _, _, typed_say = line.partition(" ")
             typed_say = typed_say.strip()
             if not typed_say:
-                print("請給要測試的句子，例：:say 你好！\n")
+                print("要給問題，例：:say 今天天氣如何\n")
+                continue
+        elif line.startswith(":tts"):
+            _, _, direct_tts = line.partition(" ")
+            direct_tts = direct_tts.strip()
+            if not direct_tts:
+                print("要給發音文字，例：:tts 測試一段話\n")
                 continue
 
         turn_start = time.time()
-        turn_start = time.time()
-        if typed_say:
-            heard = typed_say
-            print(f"測試文字：{heard}")
-            answer_display = taiwanize_text(heard, for_speech=False)
-            speech_text = taiwanize_text(heard, for_speech=True)
+        if direct_tts:
+            heard = direct_tts
+            answer_display = taiwanize_text(direct_tts, for_speech=False)
+            speech_text = taiwanize_text(direct_tts, for_speech=True)
+            print(f"發音：{answer_display}")
             stt_time = 0.0
             llm_time = 0.0
         else:
-            if not record(in_wav, args.device):
-                print("未錄到聲音，請再試一次。\n")
-                continue
-            t_stt = time.time()
-            heard = transcribe(in_wav, stt)
-            stt_time = time.time() - t_stt
-            print(f"你說：{heard}（STT {stt_time:.2f}s）")
+            if typed_say:
+                heard = typed_say
+                stt_time = 0.0
+                print(f"你問：{heard}")
+            else:
+                if not record(in_wav, args.device):
+                    print("未錄到聲音，請再試一次。\n")
+                    continue
+                t_stt = time.time()
+                heard = transcribe(in_wav, stt)
+                stt_time = time.time() - t_stt
+                print(f"你說：{heard}（STT {stt_time:.2f}s）")
             if not heard:
                 print("聽不出內容，請再試一次。\n")
                 continue
+
             t_llm = time.time()
             raw_answer = ask_llm(heard, state["backend"], state["model"], state["len"], history)
             llm_time = time.time() - t_llm
@@ -406,7 +419,7 @@ def main():
             audio_sec = len(samples) / sr
             print(f"Kokoro 合成（{lang_tag}）：{tts_time:.2f}s | 音訊長：{audio_sec:.1f}s | 總耗時：{time.time()-turn_start:.2f}s")
             subprocess.run(["paplay", str(out_wav)])
-            if not typed_say:
+            if not direct_tts:
                 history.append((heard, answer_display))
             print()
         except Exception as e:
